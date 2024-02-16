@@ -5,17 +5,36 @@ from torch.func import vmap, grad
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
+import numpy as np
+import scipy.integrate as integrate
 
 sns.set()
 torch.manual_seed(0)
 
 
+g, h, w = -9.81, 0.0, 10
+
+
 def f(x, v, th, a, t):
-    return x + v * torch.cos(th) * t + 1 / 2 * a * t**2
+    ty = (-v * torch.cos(th) + (v**2 * torch.cos(th) ** 2 + a * w) ** 0.5) / a
+    y = v * torch.sin(th) * ty + g / 2 * ty**2
+    out = x + v * torch.cos(th) * t + 1 / 2 * a * t**2
+    out = torch.where((h > y) & (ty < t), w, out)
+    return out
 
 
 def f_grad(x, v, th, a, t, std):
-    return v * t / 2**0.5 * torch.exp(-(std**2) / 4) * torch.sin(th)
+    vals = np.empty_like(th)
+    for i in range(len(th)):
+        vals[i] = (
+            v * t / 2**0.5 / 4 * np.exp(-(std**2) / 4) * np.sin(th[i])
+            - integrate.quad(
+                lambda w: np.exp(-(w**2) / std**2) * np.cos(th[i] + w), -1.418, 0.248
+            )[0]
+        )
+        # print(v)
+        # vals[i] = v
+    return vals
 
 
 fig, ax = plt.subplots(1, 4, figsize=(12, 3), sharey=True)
@@ -33,26 +52,12 @@ stds = torch.linspace(0.01, 1.0, 50)
 # stds = torch.Tensor([0.01])
 
 
-# # first pre-compute the true gradient
-# print("Pre-computing true gradients")
-# n = 100000
-# # wrapper functions for vmap to make per-sample gradient compute efficient
-# loss_fn = lambda act, logp: torch.mean(-f(x, v, act, a, t) * logp)
-# ft_compute_grad = grad(loss_fn)
-# ft_compute_sample_grad = vmap(ft_compute_grad, in_dims=0)
+# first pre-compute the true gradient
+print("Pre-computing true gradients")
+n = 100000
+# wrapper functions for vmap to make per-sample gradient compute efficient
+loss_fn = lambda act, logp: torch.mean(-f(x, v, act, a, t) * logp)
 
-# true_grads = {}
-# for std in tqdm(stds):
-#     grad_est = []
-#     for j, a in enumerate(xx):
-#         mu = Variable(torch.Tensor([a]), requires_grad=True)
-#         pi = Normal(mu, std)
-#         act = pi.sample((n, 1))
-#         y = -f(x, v, act, a, t)
-#         logps = -pi.log_prob(act)
-#         ft_per_sample_grads = ft_compute_sample_grad(act, logps)
-#         grad_est.append(ft_per_sample_grads.mean())
-#     true_grads[std.item()] = torch.Tensor(grad_est)
 
 for i, n in enumerate([1, 10, 50, 1000]):
 
@@ -71,7 +76,7 @@ for i, n in enumerate([1, 10, 50, 1000]):
     for std in tqdm(stds):
         grad_est = []
         var_per_x = []
-        true_grad = f_grad(x, v, xx, a, t, std)
+        true_grad = f_grad(x, v, xx.numpy(), a, t, std.numpy())
         for j, a in enumerate(xx):
             mu = Variable(torch.Tensor([a]), requires_grad=True)
             pi = Normal(mu, std)
@@ -150,5 +155,5 @@ for i, n in enumerate([1, 10, 50, 1000]):
 # ax[3].set_xlabel("Iterations")
 # ax[3].set_ylabel("Variance")
 plt.tight_layout()
-plt.savefig("ball_bias_variance_test.pdf", bbox_inches="tight")
+plt.savefig("ball_wall_bias_variance.pdf", bbox_inches="tight")
 plt.show()
