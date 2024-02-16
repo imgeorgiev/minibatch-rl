@@ -20,8 +20,8 @@ ax = ax.flatten()
 # simulation variables
 xx = torch.linspace(-torch.pi, torch.pi, 100)
 x, v, a, t = 0, 10, 1, 2
-std = 0.5  # noise for policy
-N = 10  # data samples
+std = 0.1  # noise for policy
+N = 100  # data samples
 iters = 300  # for optimization
 lr = 5e-2
 
